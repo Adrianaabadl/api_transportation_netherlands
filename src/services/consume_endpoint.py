@@ -1,6 +1,10 @@
 import requests
 import pandas as pd
 from google.cloud import bigquery
+from faker import Faker
+import random
+
+fake = Faker()
 
 def fetch_data():
     url = "http://v0.ovapi.nl/line/"
@@ -16,39 +20,42 @@ def process_data(data):
     records = []
     for key, value in data.items():
         record = {
-            "ID": key,
-            "TransportType": value.get("TransportType", "N/A"),
-            "LineName": value.get("LineName", "N/A"),
-            "LinePublicNumber": value.get("LinePublicNumber", "N/A"),
-            "DataOwnerCode": value.get("DataOwnerCode", "N/A"),
-            "DestinationName50": value.get("DestinationName50", "N/A"),
-            "LinePlanningNumber": value.get("LinePlanningNumber", "N/A"),
-            "LineDirection": value.get("LineDirection", "N/A")
+            "id": key,
+            "transport_type": value.get("TransportType", "N/A"),
+            "line_name": value.get("LineName", "N/A"),
+            "line_public_number": value.get("LinePublicNumber", "N/A"),
+            "data_owner_code": value.get("DataOwnerCode", "N/A"),
+            "destination_name_50": value.get("DestinationName50", "N/A"),
+            "line_planning_number": value.get("LinePlanningNumber", "N/A"),
+            "line_direction": str(value.get("LineDirection", "N/A")),
+            "load_date": fake.date_between(start_date='-180d', end_date='today').strftime('%Y-%m-%d')
         }
         records.append(record)
+    return records
 
-    return pd.DataFrame(records)
-
-def load_data_to_bigquery(df, project_id, dataset_id, table_id):
+def load_data_to_bigquery(records, project_id, dataset_id, table_id):
     client = bigquery.Client(project=project_id)
     table_ref = f"{project_id}.{dataset_id}.{table_id}"
+    df = pd.DataFrame(records)
+    df['load_date'] = pd.to_datetime(df['load_date']).dt.date 
+    
     if not df.empty:
         job = client.load_table_from_dataframe(df, table_ref, job_config=bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_APPEND))
-        job.result() 
+        job.result()
         print(f"Loaded {job.output_rows} rows into {table_ref}.")
     else:
         print("No data to load into BigQuery.")
-
+        
 def main():
-    project_id = "your_project_id"
-    dataset_id = "your_dataset_id"
-    table_id = "your_table_id"
+    project_id = "develop-431503"
+    dataset_id = "transportation_netherlands"
+    table_id = "ovapi"
     
     data = fetch_data()
     if data:
-        df = process_data(data)
-        load_data_to_bigquery(df, project_id, dataset_id, table_id)
+        records = process_data(data)
+        load_data_to_bigquery(records, project_id, dataset_id, table_id)
 
 if __name__ == "__main__":
     main()
